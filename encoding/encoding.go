@@ -76,23 +76,14 @@ func (e *Encoder) PackMessage(flags uint64, message []byte) ([]byte, error) {
 	}
 	buf.Write(ciphertext)
 
-	encodedBuf := make([]byte, ascii85.MaxEncodedLen(buf.Len()))
-	n := ascii85.Encode(encodedBuf, buf.Bytes())
-	encodedBuf = encodedBuf[0:n]
-
-	return encodedBuf, nil
+	return EncodeAscii85(buf.Bytes()), nil
 }
 
 func (e *Encoder) UnpackMessage(encodedBody []byte) ([]byte, uint64, error) {
-	decoded := make([]byte, 4*len(encodedBody))
-	ndst, nsrc, err := ascii85.Decode(decoded, encodedBody, true)
+	decoded, err := DecodeAscii85(encodedBody)
 	if err != nil {
-		return nil, 0, fmt.Errorf("ascii85.Decode: %v", err)
-	} else if len(encodedBody) != nsrc {
-		// should not happen in practice
-		return nil, 0, fmt.Errorf("ascii85.Decode: mismatch between encoded len %d and decoded len %d", len(encodedBody), nsrc)
+		return nil, 0, err
 	}
-	decoded = decoded[:ndst]
 
 	flags := binary.BigEndian.Uint64(decoded[:8])
 	message, err := rsa.DecryptOAEP(
@@ -128,9 +119,13 @@ func MarshalKey(private *rsa.PrivateKey) (privateBytes, publicBytes []byte, err 
 	return priBytes, pubBytes, nil
 }
 
-// TODO: use base85 to store in config
-func UnmarshalPrivateKey(key []byte) (*rsa.PrivateKey, error) {
-	pri, err := x509.ParsePKCS8PrivateKey(key)
+func UnmarshalPrivateKeyWithAscii85(key []byte) (*rsa.PrivateKey, error) {
+	decoded, err := DecodeAscii85(key)
+	if err != nil {
+		return nil, err
+	}
+
+	pri, err := x509.ParsePKCS8PrivateKey(decoded)
 	if err != nil {
 		return nil, err
 	}
@@ -139,4 +134,22 @@ func UnmarshalPrivateKey(key []byte) (*rsa.PrivateKey, error) {
 		return nil, errors.New("invalid private key")
 	}
 	return p, nil
+}
+
+func EncodeAscii85(data []byte) []byte {
+	encodedBuf := make([]byte, ascii85.MaxEncodedLen(len(data)))
+	n := ascii85.Encode(encodedBuf, data)
+	return encodedBuf[0:n]
+}
+
+func DecodeAscii85(encoded []byte) ([]byte, error) {
+	decoded := make([]byte, 4*len(encoded))
+	ndst, nsrc, err := ascii85.Decode(decoded, encoded, true)
+	if err != nil {
+		return nil, fmt.Errorf("ascii85.Decode: %v", err)
+	} else if len(encoded) != nsrc {
+		// should not happen in practice
+		return nil, fmt.Errorf("ascii85.Decode: mismatch between encoded len %d and decoded len %d", len(encoded), nsrc)
+	}
+	return decoded[:ndst], nil
 }
