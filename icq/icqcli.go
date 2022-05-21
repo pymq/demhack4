@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/url"
 	"time"
@@ -70,12 +71,12 @@ type GetMessageChanMessage struct {
 	Err  error
 }
 
-func (icqInst *ICQClient) GetMessageChan() (chan GetMessageChanMessage, error) {
+func (icqInst *ICQClient) GetMessageChan() (chan GetMessageChanMessage, chan bool, error) {
 	const requestUrl = "bos/bos-k035b/aim/fetchEvents"
 
 	bUrl, err := url.Parse(fmt.Sprint(BaseUrl, requestUrl))
 	if err != nil {
-		return nil, fmt.Errorf("prepare message chan error: %s", err)
+		return nil, nil, fmt.Errorf("prepare message chan error: %s", err)
 	}
 
 	urlValues := bUrl.Query()
@@ -85,25 +86,32 @@ func (icqInst *ICQClient) GetMessageChan() (chan GetMessageChanMessage, error) {
 	urlValues.Set("rnd", icqInst.genRequestId(fetch))
 	decoded, err := url.QueryUnescape(urlValues.Encode()) // TODO криво :/
 	if err != nil {
-		return nil, fmt.Errorf("prepare message chan error: %s", err)
+		return nil, nil, fmt.Errorf("prepare message chan error: %s", err)
 	}
 
 	bUrl.RawQuery = decoded
 	initFetchUrl := bUrl.String()
 	msgCh := make(chan GetMessageChanMessage)
+	stopFetching := make(chan bool)
 
 	go func() {
 		const maxRetry = 3
 		fetchUrl := initFetchUrl
 		retryCounter := 0
+
 		for {
+			select {
+			case <-stopFetching:
+				return
+			default:
+			}
 			if retryCounter >= maxRetry {
 				msgCh <- GetMessageChanMessage{
 					Text: nil,
 					Err:  errors.New("send fetch request error: retry count exceeded"),
 				}
 				close(msgCh)
-				break
+				return
 			}
 			res, err := DoGetRequest(fetchUrl, nil, sharedHeaders)
 			if err != nil {
@@ -157,7 +165,7 @@ func (icqInst *ICQClient) GetMessageChan() (chan GetMessageChanMessage, error) {
 		}
 	}()
 
-	return msgCh, nil
+	return msgCh, stopFetching, nil
 }
 
 type React int8
@@ -245,22 +253,29 @@ func (icqInst *ICQClient) genRequestId(idType requestIdType) string {
 
 type ICQClientRWC struct {
 	*ICQClient
-	messageChan chan GetMessageChanMessage
+	closed       bool
+	messageChan  chan GetMessageChanMessage
+	stopFetching chan bool
+	unreadBytes  []byte
 	// TODO Сюда же можно функцию для стеганографии текста можно впихнуть и шифрования/дешифрования, если надо менять их
 }
 
 func (icqInst *ICQClient) NewICQClientRWC() (*ICQClientRWC, error) {
-	msgCh, err := icqInst.GetMessageChan()
+	msgCh, stopFetching, err := icqInst.GetMessageChan()
 	if err != nil {
 		return nil, err
 	}
 	return &ICQClientRWC{
-		ICQClient:   icqInst,
-		messageChan: msgCh,
+		ICQClient:    icqInst,
+		messageChan:  msgCh,
+		stopFetching: stopFetching,
 	}, nil
 }
 
 func (icq *ICQClientRWC) Write(p []byte) (n int, err error) {
+	if icq.closed {
+		return 0, errors.New("write error: connection closed")
+	}
 	_, err = icq.SendMessage(p)
 	if err != nil {
 		return 0, err
@@ -269,6 +284,9 @@ func (icq *ICQClientRWC) Write(p []byte) (n int, err error) {
 }
 
 func (icq *ICQClientRWC) Read(p []byte) (n int, err error) {
+	if icq.closed {
+		return 0, errors.New("read error: connection closed")
+	}
 	if len(p) == 0 {
 		return 0, nil
 	}
@@ -277,12 +295,27 @@ func (icq *ICQClientRWC) Read(p []byte) (n int, err error) {
 	if result.Err != nil {
 		return 0, err
 	}
-	if !ok {
+	icq.unreadBytes = append(icq.unreadBytes, result.Text...) // TODO можно обойтись без перекладывания, будет экономичнее
 
+	readBytesCounter := 0
+	for i := 0; i < len(p) && len(icq.unreadBytes) > 0; i++ {
+		p[i] = icq.unreadBytes[0]
+		icq.unreadBytes = icq.unreadBytes[1:]
+		readBytesCounter++
 	}
-	return 0, nil
+	if len(icq.unreadBytes) == 0 && !ok {
+		return readBytesCounter, io.EOF
+	}
+
+	return readBytesCounter, nil
 }
 
-func (icq *ICQClientRWC) Close() {
-
+func (icq *ICQClientRWC) Close() error {
+	if icq.closed {
+		return nil
+	}
+	icq.stopFetching <- true
+	icq.unreadBytes = nil
+	icq.closed = true
+	return nil
 }
