@@ -17,6 +17,13 @@ const (
 	rsaSignatureSize = 256
 )
 
+type MessageType uint64
+
+const (
+	PublicKey MessageType = iota + 1
+	Text
+)
+
 var rsaLabel = []byte("")
 
 // Packet structure:
@@ -55,11 +62,11 @@ func (e *Encoder) GetOwnPublicKey() []byte {
 	return e.publicKeyBytes
 }
 
-func (e *Encoder) PackMessage(flags uint64, message []byte) ([]byte, error) {
+func (e *Encoder) PackMessage(flags MessageType, message []byte) ([]byte, error) {
 	// TODO: reuse buffers with sync.Pool, optimize allocations
 	buf := bytes.Buffer{}
 	var data [8]byte
-	binary.BigEndian.PutUint64(data[:], flags)
+	binary.BigEndian.PutUint64(data[:], uint64(flags))
 	buf.Write(data[:])
 
 	// TODO: check this fact
@@ -79,7 +86,7 @@ func (e *Encoder) PackMessage(flags uint64, message []byte) ([]byte, error) {
 	return EncodeBase64(buf.Bytes()), nil
 }
 
-func (e *Encoder) UnpackMessage(encodedBody []byte) ([]byte, uint64, error) {
+func (e *Encoder) UnpackMessage(encodedBody []byte) ([]byte, MessageType, error) {
 	decoded, err := DecodeBase64(encodedBody)
 	if err != nil {
 		return nil, 0, err
@@ -97,7 +104,7 @@ func (e *Encoder) UnpackMessage(encodedBody []byte) ([]byte, uint64, error) {
 		return nil, 0, fmt.Errorf("rsa.DecryptOAEP: %v", err)
 	}
 
-	return message, flags, nil
+	return message, MessageType(flags), nil
 }
 
 func GenerateKey() (*rsa.PrivateKey, *rsa.PublicKey, error) {

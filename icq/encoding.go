@@ -11,7 +11,7 @@ type ICQEncoder struct {
 }
 
 func (e *ICQEncoder) Encode(message []byte) ([]byte, error) {
-	return e.PackMessage(1, message)
+	return e.PackMessage(encoding.Text, message)
 }
 
 func (e *ICQEncoder) Decode(message []byte) ([]byte, error) {

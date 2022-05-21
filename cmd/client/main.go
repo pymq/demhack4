@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/knadh/koanf"
@@ -80,14 +81,22 @@ func main() {
 		log.Fatalf("error setting server public key: %v", err)
 	}
 
-	// TODO: also pass BotRoomID
 	icqClient := icq.NewICQClient(cfg.ICQ.ClientToken)
 
-	ctx := context.Background()
+	ctx, _ := context.WithCancel(context.Background())
 
 	proxyConns := proxy.ConnsChan()
 	for conn := range proxyConns {
-		// TODO: send public key
+		encKey, err := encoder.PackMessage(encoding.PublicKey, encoder.GetOwnPublicKey())
+		if err != nil {
+			panic(err)
+		}
+		err = icqClient.SendMessage(ctx, encKey, cfg.ICQ.BotRoomID)
+		if err != nil {
+			_ = conn.Close()
+			log.Warnf("send public key error: %v", err)
+			continue
+		}
 
 		msgCh, err := icqClient.MessageChan(ctx, cfg.ICQ.BotRoomID)
 		if err != nil {
@@ -95,10 +104,29 @@ func main() {
 			return
 		}
 
-		// TODO: pass encoder
-		rwc := icq.NewRWCClient(ctx, icqClient, msgCh, nil, cfg.ICQ.BotRoomID)
-		// TODO proxy between conn and rwc
-		_ = rwc
-		_ = conn
+		rwc := icq.NewRWCClient(ctx, icqClient, msgCh, &icq.ICQEncoder{Encoder: *encoder}, cfg.ICQ.BotRoomID)
+		bidirectionalCopy(rwc, conn)
+	}
+}
+
+func bidirectionalCopy(first io.ReadWriteCloser, second io.ReadWriteCloser) {
+	errCh := make(chan error, 2)
+	go func() {
+		_, err := io.Copy(first, second)
+		errCh <- err
+	}()
+	go func() {
+		_, err := io.Copy(second, first)
+		errCh <- err
+	}()
+
+	// Wait
+	for i := 0; i < 2; i++ {
+		err := <-errCh
+		if err != nil {
+			_ = first.Close()
+			_ = second.Close()
+			log.Warnf("proxy rwc conn error: %v", err)
+		}
 	}
 }
