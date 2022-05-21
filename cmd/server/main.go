@@ -4,6 +4,8 @@ import (
 	"crypto/rsa"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/knadh/koanf"
 	"github.com/knadh/koanf/parsers/json"
@@ -61,8 +63,12 @@ func main() {
 		}
 	}()
 
-	// TODO icq bot
-	icqBot, err := icq.NewICQBot(cfg.ICQBotToken)
+	encoder, err := encoding.NewEncoder(privateKey)
+	if err != nil {
+		log.Fatalf("error setup encoder: %v", err)
+	}
+
+	icqBot, err := icq.NewICQBot(cfg.ICQBotToken, encoder, proxy)
 	if err != nil {
 		log.Fatalf("error initializing icq bot: %v", err)
 	}
@@ -73,5 +79,8 @@ func main() {
 		}
 	}()
 
-	_ = icqBot.Bot
+	quitCh := make(chan os.Signal, 1)
+	signal.Notify(quitCh, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+	sig := <-quitCh
+	log.Infof("received exit signal '%s'", sig)
 }

@@ -5,17 +5,22 @@ import (
 	"fmt"
 
 	botgolang "github.com/mail-ru-im/bot-golang"
+	"github.com/pymq/demhack4/encoding"
+	"github.com/pymq/demhack4/socksproxy"
+	log "github.com/sirupsen/logrus"
 )
 
-// TODO: refactor business logic out of ICQBot
+// TODO: refactor business logic out of ICQBot, including encoder, socksproxy
 type ICQBot struct {
 	Bot       *botgolang.Bot
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 	openConns map[string]*RWC
+	encoder   *encoding.Encoder
+	proxy     *socksproxy.Server
 }
 
-func NewICQBot(botToken string) (*ICQBot, error) {
+func NewICQBot(botToken string, encoder *encoding.Encoder, proxy *socksproxy.Server) (*ICQBot, error) {
 	bot, err := botgolang.NewBot(botToken)
 	if err != nil {
 		return nil, err
@@ -26,6 +31,8 @@ func NewICQBot(botToken string) (*ICQBot, error) {
 		ctx:       ctx,
 		ctxCancel: cancel,
 		openConns: map[string]*RWC{},
+		encoder:   encoder,
+		proxy:     proxy,
 	}
 	go b.processEvents(ctx)
 
@@ -68,11 +75,28 @@ func (bot *ICQBot) processEvents(ctx context.Context) {
 				continue
 			}
 
-			// TODO: get public key from message, create encoder and pass to rwc
+			publicKey, flags, err := bot.encoder.UnpackMessage([]byte(message))
+			if err != nil {
+				log.Errorf("icq: server: unpack encoded message: %v", err)
+				continue
+			}
+			if flags != encoding.PublicKey {
+				log.Errorf("icq: server: invalid first message type from peer: '%d', should be '%d'", flags, encoding.PublicKey)
+				continue
+			}
+
+			encoder := bot.encoder.Copy()
+			err = encoder.SetPeerPublicKey(publicKey)
+			if err != nil {
+				log.Errorf("icq: server: set peer public key: %v", err)
+				continue
+			}
 
 			msgCh := make(chan ICQMessageEvent, 1)
-			rwc = NewRWCClient(ctx, bot, msgCh, nil, chatID)
+			rwc = NewRWCClient(ctx, bot, msgCh, &ICQEncoder{Encoder: *encoder}, chatID)
 			bot.openConns[chatID] = rwc
+
+			bot.proxy.ServeConn(rwc)
 		}
 	}
 }

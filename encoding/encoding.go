@@ -62,6 +62,14 @@ func (e *Encoder) GetOwnPublicKey() []byte {
 	return e.publicKeyBytes
 }
 
+func (e *Encoder) Copy() *Encoder {
+	return &Encoder{
+		ownPrivKey:     e.ownPrivKey,
+		publicKeyBytes: e.publicKeyBytes,
+		peerPublicKey:  e.peerPublicKey,
+	}
+}
+
 func (e *Encoder) PackMessage(flags MessageType, message []byte) ([]byte, error) {
 	// TODO: reuse buffers with sync.Pool, optimize allocations
 	buf := bytes.Buffer{}
