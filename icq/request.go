@@ -2,6 +2,7 @@ package icq
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,8 +17,8 @@ var reqHTTP = &http.Client{
 	},
 }
 
-func doRequest(methode, url string, body []byte, headers, sharedHeaders map[string]string) (*http.Response, error) {
-	req, err := http.NewRequest(methode, url, bytes.NewBuffer(body))
+func doRequest(ctx context.Context, methode, url string, body []byte, headers, sharedHeaders map[string]string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, methode, url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
 	}
@@ -42,10 +43,10 @@ func doRequest(methode, url string, body []byte, headers, sharedHeaders map[stri
 	return resp, nil
 }
 
-func DoGetRequest(url string, headers, sharedHeaders map[string]string) (*http.Response, error) {
-	return doRequest(http.MethodGet, url, nil, headers, sharedHeaders)
+func DoGetRequest(ctx context.Context, url string, headers, sharedHeaders map[string]string) (*http.Response, error) {
+	return doRequest(ctx, http.MethodGet, url, nil, headers, sharedHeaders)
 }
 
-func DoPostRequest(url string, body []byte, headers, sharedHeaders map[string]string) (*http.Response, error) {
-	return doRequest(http.MethodPost, url, body, headers, sharedHeaders)
+func DoPostRequest(ctx context.Context, url string, body []byte, headers, sharedHeaders map[string]string) (*http.Response, error) {
+	return doRequest(ctx, http.MethodPost, url, body, headers, sharedHeaders)
 }

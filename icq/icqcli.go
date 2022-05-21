@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"net/url"
 	"time"
+
+	"golang.org/x/net/context"
 )
 
 type ICQClient struct {
@@ -15,7 +16,7 @@ type ICQClient struct {
 	aimsId string
 }
 
-const BotRoomId = "70001" // TODO replace to real bot id
+const BotRoomId = "70001" // TODO replace to real Bot id
 const BaseUrl = "https://u.icq.net/api/v78/"
 
 var sharedHeaders = map[string]string{
@@ -44,21 +45,21 @@ func NewICQClient(token string) *ICQClient {
 	}
 }
 
-func (icqInst *ICQClient) SendMessage(msg []byte) (bool, error) {
+func (icqInst *ICQClient) SendMessage(ctx context.Context, msg []byte, chatId string) (bool, error) {
 	const requestUrl = "wim/im/sendIM"
 	headers := map[string]string{
 		"content-type": "application/x-www-form-urlencoded",
 	}
 
 	data := url.Values{}
-	data.Set("t", BotRoomId)                    // chatId
+	data.Set("t", chatId)                       // chatId
 	data.Set("r", icqInst.genRequestId(shared)) // requestId
 	data.Set("mentions", "")
 	data.Set("message", string(msg))   // msg
 	data.Set("f", "json")              // output format
 	data.Set("aimsid", icqInst.aimsId) // token
 
-	req, err := DoPostRequest(fmt.Sprint(BaseUrl, requestUrl), []byte(data.Encode()), headers, sharedHeaders)
+	req, err := DoPostRequest(ctx, fmt.Sprint(BaseUrl, requestUrl), []byte(data.Encode()), headers, sharedHeaders)
 	if err != nil {
 		return false, fmt.Errorf("send message error: %s", err)
 	}
@@ -66,17 +67,17 @@ func (icqInst *ICQClient) SendMessage(msg []byte) (bool, error) {
 	return true, req.Body.Close()
 }
 
-type GetMessageChanMessage struct {
+type ICQMessageEvent struct {
 	Text []byte
 	Err  error
 }
 
-func (icqInst *ICQClient) GetMessageChan() (chan GetMessageChanMessage, chan bool, error) {
-	const requestUrl = "bos/bos-k035b/aim/fetchEvents"
+func (icqInst *ICQClient) MessageChan(ctx context.Context, _ string) (chan ICQMessageEvent, error) {
+	const requestUrl = "bos/bos-k035b/aim/fetchEvents" //TODO Filter byChatId
 
 	bUrl, err := url.Parse(fmt.Sprint(BaseUrl, requestUrl))
 	if err != nil {
-		return nil, nil, fmt.Errorf("prepare message chan error: %s", err)
+		return nil, fmt.Errorf("prepare message chan error: %s", err)
 	}
 
 	urlValues := bUrl.Query()
@@ -86,13 +87,12 @@ func (icqInst *ICQClient) GetMessageChan() (chan GetMessageChanMessage, chan boo
 	urlValues.Set("rnd", icqInst.genRequestId(fetch))
 	decoded, err := url.QueryUnescape(urlValues.Encode()) // TODO криво :/
 	if err != nil {
-		return nil, nil, fmt.Errorf("prepare message chan error: %s", err)
+		return nil, fmt.Errorf("prepare message chan error: %s", err)
 	}
 
 	bUrl.RawQuery = decoded
 	initFetchUrl := bUrl.String()
-	msgCh := make(chan GetMessageChanMessage)
-	stopFetching := make(chan bool)
+	msgCh := make(chan ICQMessageEvent)
 
 	go func() {
 		const maxRetry = 3
@@ -101,23 +101,23 @@ func (icqInst *ICQClient) GetMessageChan() (chan GetMessageChanMessage, chan boo
 
 		for {
 			select {
-			case <-stopFetching:
+			case <-ctx.Done():
 				return
 			default:
 			}
 			if retryCounter >= maxRetry {
-				msgCh <- GetMessageChanMessage{
+				msgCh <- ICQMessageEvent{
 					Text: nil,
 					Err:  errors.New("send fetch request error: retry count exceeded"),
 				}
 				close(msgCh)
 				return
 			}
-			res, err := DoGetRequest(fetchUrl, nil, sharedHeaders)
+			res, err := DoGetRequest(ctx, fetchUrl, nil, sharedHeaders)
 			if err != nil {
 				fetchUrl = initFetchUrl
 				retryCounter++
-				msgCh <- GetMessageChanMessage{
+				msgCh <- ICQMessageEvent{
 					Text: nil,
 					Err:  fmt.Errorf("send fetch request error: %s", err),
 				}
@@ -129,7 +129,7 @@ func (icqInst *ICQClient) GetMessageChan() (chan GetMessageChanMessage, chan boo
 			if err != nil {
 				fetchUrl = initFetchUrl
 				retryCounter++
-				msgCh <- GetMessageChanMessage{
+				msgCh <- ICQMessageEvent{
 					Text: nil,
 					Err:  fmt.Errorf("unmarshal fetch request error: %s", err),
 				}
@@ -139,7 +139,7 @@ func (icqInst *ICQClient) GetMessageChan() (chan GetMessageChanMessage, chan boo
 			if err != nil {
 				fetchUrl = initFetchUrl
 				retryCounter++
-				msgCh <- GetMessageChanMessage{
+				msgCh <- ICQMessageEvent{
 					Text: nil,
 					Err:  fmt.Errorf("unmarshal fetch request error: %s", err),
 				}
@@ -155,7 +155,7 @@ func (icqInst *ICQClient) GetMessageChan() (chan GetMessageChanMessage, chan boo
 						if msg.Outgoing {
 							continue
 						}
-						msgCh <- GetMessageChanMessage{
+						msgCh <- ICQMessageEvent{
 							Text: []byte(msg.Text),
 							Err:  nil,
 						}
@@ -165,7 +165,7 @@ func (icqInst *ICQClient) GetMessageChan() (chan GetMessageChanMessage, chan boo
 		}
 	}()
 
-	return msgCh, stopFetching, nil
+	return msgCh, nil
 }
 
 type React int8
@@ -222,7 +222,7 @@ func (icqInst *ICQClient) AddReact(react React, msgId int64) (bool, error) {
 		return false, fmt.Errorf("add react prepare request error: %s", err)
 	}
 
-	req, err := DoPostRequest(fmt.Sprint(BaseUrl, requestUrl), reqBody, headers, sharedHeaders)
+	req, err := DoPostRequest(context.Background(), fmt.Sprint(BaseUrl, requestUrl), reqBody, headers, sharedHeaders)
 	if err != nil {
 		return false, fmt.Errorf("add react send request error: %s", err)
 	}
@@ -249,73 +249,4 @@ func (icqInst *ICQClient) genRequestId(idType requestIdType) string {
 	default:
 		return fmt.Sprintf("%d-%d", icqInst.rnd.Int63n(100000), icqInst.rnd.Int63n(10000000000))
 	}
-}
-
-type ICQClientRWC struct {
-	*ICQClient
-	closed       bool
-	messageChan  chan GetMessageChanMessage
-	stopFetching chan bool
-	unreadBytes  []byte
-	// TODO Сюда же можно функцию для стеганографии текста можно впихнуть и шифрования/дешифрования, если надо менять их
-}
-
-func (icqInst *ICQClient) NewICQClientRWC() (*ICQClientRWC, error) {
-	msgCh, stopFetching, err := icqInst.GetMessageChan()
-	if err != nil {
-		return nil, err
-	}
-	return &ICQClientRWC{
-		ICQClient:    icqInst,
-		messageChan:  msgCh,
-		stopFetching: stopFetching,
-	}, nil
-}
-
-func (icq *ICQClientRWC) Write(p []byte) (n int, err error) {
-	if icq.closed {
-		return 0, errors.New("write error: connection closed")
-	}
-	_, err = icq.SendMessage(p)
-	if err != nil {
-		return 0, err
-	}
-	return len(p), nil // TODO handle big messages
-}
-
-func (icq *ICQClientRWC) Read(p []byte) (n int, err error) {
-	if icq.closed {
-		return 0, errors.New("read error: connection closed")
-	}
-	if len(p) == 0 {
-		return 0, nil
-	}
-
-	result, ok := <-icq.messageChan
-	if result.Err != nil {
-		return 0, err
-	}
-	icq.unreadBytes = append(icq.unreadBytes, result.Text...) // TODO можно обойтись без перекладывания, будет экономичнее
-
-	readBytesCounter := 0
-	for i := 0; i < len(p) && len(icq.unreadBytes) > 0; i++ {
-		p[i] = icq.unreadBytes[0]
-		icq.unreadBytes = icq.unreadBytes[1:]
-		readBytesCounter++
-	}
-	if len(icq.unreadBytes) == 0 && !ok {
-		return readBytesCounter, io.EOF
-	}
-
-	return readBytesCounter, nil
-}
-
-func (icq *ICQClientRWC) Close() error {
-	if icq.closed {
-		return nil
-	}
-	icq.stopFetching <- true
-	icq.unreadBytes = nil
-	icq.closed = true
-	return nil
 }
