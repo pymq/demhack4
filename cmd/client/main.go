@@ -100,8 +100,8 @@ func main() {
 
 		msgCh, err := icqClient.MessageChan(ctx, cfg.ICQ.BotRoomID)
 		if err != nil {
-			// TODO
-			return
+			log.Warnf("can't start fethcing: %v", err)
+			continue
 		}
 
 		rwc := icq.NewRWCClient(ctx, icqClient, msgCh, &icq.ICQEncoder{Encoder: *encoder}, cfg.ICQ.BotRoomID)
