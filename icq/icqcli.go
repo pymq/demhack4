@@ -16,7 +16,6 @@ type ICQClient struct {
 	aimsId string
 }
 
-const BotRoomId = "70001" // TODO replace to real Bot id
 const BaseUrl = "https://u.icq.net/api/v78/"
 
 var sharedHeaders = map[string]string{
@@ -72,7 +71,7 @@ type ICQMessageEvent struct {
 	Err  error
 }
 
-func (icqInst *ICQClient) MessageChan(ctx context.Context, _ string) (chan ICQMessageEvent, error) {
+func (icqInst *ICQClient) MessageChan(ctx context.Context, chatId string) (chan ICQMessageEvent, error) {
 	const requestUrl = "bos/bos-k035b/aim/fetchEvents" //TODO Filter byChatId
 
 	bUrl, err := url.Parse(fmt.Sprint(BaseUrl, requestUrl))
@@ -149,6 +148,9 @@ func (icqInst *ICQClient) MessageChan(ctx context.Context, _ string) (chan ICQMe
 			fetchUrl = data.Response.Data.FetchBaseURL
 			retryCounter = 0
 			for _, event := range data.Response.Data.Events {
+				if event.EventData.Sn != chatId {
+					continue
+				}
 				switch event.Type {
 				case "histDlgState":
 					for _, msg := range event.EventData.Messages {
@@ -179,7 +181,7 @@ const (
 	Angry
 )
 
-func (icqInst *ICQClient) AddReact(react React, msgId int64) (bool, error) {
+func (icqInst *ICQClient) AddReact(ctx context.Context, react React, msgId int64, chatId string) (bool, error) {
 	const requestUrl = "rapi/reaction/add"
 	headers := map[string]string{
 		"content-type": "application/json",
@@ -190,7 +192,7 @@ func (icqInst *ICQClient) AddReact(react React, msgId int64) (bool, error) {
 		AimsId: icqInst.aimsId,
 		Params: reactRequestBodyParams{
 			MsgId:  msgId,
-			ChatId: BotRoomId, // TODO should be changeable????
+			ChatId: chatId,
 			Reactions: []string{
 				"👍",
 				"❤️",
@@ -222,7 +224,7 @@ func (icqInst *ICQClient) AddReact(react React, msgId int64) (bool, error) {
 		return false, fmt.Errorf("add react prepare request error: %s", err)
 	}
 
-	req, err := DoPostRequest(context.Background(), fmt.Sprint(BaseUrl, requestUrl), reqBody, headers, sharedHeaders)
+	req, err := DoPostRequest(ctx, fmt.Sprint(BaseUrl, requestUrl), reqBody, headers, sharedHeaders)
 	if err != nil {
 		return false, fmt.Errorf("add react send request error: %s", err)
 	}

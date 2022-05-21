@@ -58,18 +58,29 @@ func (icq *RWC) Read(p []byte) (n int, err error) {
 		return 0, nil
 	}
 
+	relocatedSliceBytes := func(from, to []byte, counter int) {
+		for i := 0; i < len(to) && len(from) > 0; i++ {
+			to[i] = from[0]
+			from = from[1:]
+			counter++
+		}
+	}
+
+	readBytesCounter := 0
+
+	if len(icq.unreadBytes) > 0 {
+		relocatedSliceBytes(icq.unreadBytes, p, readBytesCounter)
+		return readBytesCounter, nil
+	}
+
 	result, ok := <-icq.messageChan
 	if result.Err != nil {
 		return 0, err
 	}
-	icq.unreadBytes = append(icq.unreadBytes, result.Text...) // TODO можно обойтись без перекладывания, будет экономичнее
+	relocatedSliceBytes(result.Text, p, readBytesCounter)
 
-	readBytesCounter := 0
-	for i := 0; i < len(p) && len(icq.unreadBytes) > 0; i++ {
-		p[i] = icq.unreadBytes[0]
-		icq.unreadBytes = icq.unreadBytes[1:]
-		readBytesCounter++
-	}
+	icq.unreadBytes = append(icq.unreadBytes, result.Text...)
+
 	if len(icq.unreadBytes) == 0 && !ok {
 		return readBytesCounter, io.EOF
 	}
