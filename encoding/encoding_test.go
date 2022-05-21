@@ -24,10 +24,10 @@ func TestEncoding(t *testing.T) {
 
 	const expectedText = "hello world!"
 
-	encodedMessage, err := encOne.PackMessage(1, []byte(expectedText))
+	encodedMessage, err := encOne.PackMessage(PublicKey, []byte(expectedText))
 	assert.NoError(t, err)
 	decodedMessage, flags, err := encTwo.UnpackMessage(encodedMessage)
 	assert.NoError(t, err)
-	assert.Equal(t, uint64(1), flags)
+	assert.Equal(t, PublicKey, flags)
 	assert.Equal(t, expectedText, string(decodedMessage))
 }
