@@ -7,8 +7,7 @@ import (
 )
 
 type Client interface {
-	SendMessage(ctx context.Context, msg []byte, chatId string) (bool, error)
-	MessageChan(ctx context.Context, chatId string) (chan ICQMessageEvent, error)
+	SendMessage(ctx context.Context, msg []byte, chatId string) error
 }
 
 type Encoding interface {
@@ -26,23 +25,16 @@ type RWC struct {
 	chatId      string
 }
 
-func NewRWCClient(ctx context.Context, cli Client, enc Encoding, chatId string) (*RWC, error) {
+func NewRWCClient(ctx context.Context, cli Client, messageChan chan ICQMessageEvent, enc Encoding, chatId string) *RWC {
 	ctx, cancel := context.WithCancel(ctx)
-
-	msgCh, err := cli.MessageChan(ctx, chatId)
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-
 	return &RWC{
 		Client:      cli,
 		Encoding:    enc,
-		messageChan: msgCh,
+		messageChan: messageChan,
 		ctx:         ctx,
 		ctxCancel:   cancel,
 		chatId:      chatId,
-	}, nil
+	}
 }
 
 func (icq *RWC) Write(p []byte) (n int, err error) {
@@ -55,7 +47,7 @@ func (icq *RWC) Write(p []byte) (n int, err error) {
 		return 0, errors.New("write error: can't encode message")
 	}
 
-	_, err = icq.SendMessage(icq.ctx, msg, icq.chatId)
+	err = icq.SendMessage(icq.ctx, msg, icq.chatId)
 	if err != nil {
 		return 0, err
 	}
@@ -94,7 +86,7 @@ func (icq *RWC) Read(p []byte) (n int, err error) {
 	if err != nil {
 		return 0, errors.New("read error: can't decode message")
 	}
-	
+
 	relocatedSliceBytes(result.Text, p, readBytesCounter)
 
 	icq.unreadBytes = append(icq.unreadBytes, result.Text...)

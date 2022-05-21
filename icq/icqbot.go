@@ -1,14 +1,18 @@
 package icq
 
 import (
+	"context"
 	"fmt"
 
 	botgolang "github.com/mail-ru-im/bot-golang"
-	"golang.org/x/net/context"
 )
 
+// TODO: refactor business logic out of ICQBot
 type ICQBot struct {
-	Bot *botgolang.Bot
+	Bot       *botgolang.Bot
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+	openConns map[string]*RWC
 }
 
 func NewICQBot(botToken string) (*ICQBot, error) {
@@ -16,38 +20,59 @@ func NewICQBot(botToken string) (*ICQBot, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ICQBot{Bot: bot}, nil
+	ctx, cancel := context.WithCancel(context.Background())
+	b := &ICQBot{
+		Bot:       bot,
+		ctx:       ctx,
+		ctxCancel: cancel,
+		openConns: map[string]*RWC{},
+	}
+	go b.processEvents(ctx)
+
+	return b, nil
 }
 
-func (bot *ICQBot) SendMessage(_ context.Context, msg []byte, chatId string) (bool, error) {
+func (bot *ICQBot) SendMessage(_ context.Context, msg []byte, chatId string) error {
 	icqMsg := bot.Bot.NewTextMessage(chatId, string(msg))
 	err := icqMsg.Send()
 	if icqMsg != nil {
-		return false, fmt.Errorf("bot send message error: %s", err)
+		return fmt.Errorf("bot send message error: %s", err)
 	}
-	return true, nil
+	return nil
 }
 
-func (bot *ICQBot) MessageChan(ctx context.Context, chatId string) (chan ICQMessageEvent, error) {
+func (bot *ICQBot) Close() error {
+	bot.ctxCancel()
+	return nil
+}
+
+func (bot *ICQBot) processEvents(ctx context.Context) {
 	updates := bot.Bot.GetUpdatesChannel(ctx)
 
-	msgCh := make(chan ICQMessageEvent)
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case update := <-updates:
-				if update.Type == botgolang.NEW_MESSAGE && update.Payload.Chat.ID == chatId {
-					msgCh <- ICQMessageEvent{
-						Text: []byte(update.Payload.Message().Text),
-						Err:  nil,
-					}
-				}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case update := <-updates:
+			if update.Type != botgolang.NEW_MESSAGE {
+				continue
 			}
-		}
-	}()
+			chatID := update.Payload.Chat.ID
+			message := update.Payload.Message().Text
 
-	return msgCh, nil
+			rwc, exists := bot.openConns[chatID]
+			if exists {
+				rwc.messageChan <- ICQMessageEvent{
+					Text: []byte(message),
+				}
+				continue
+			}
+
+			// TODO: get public key from message, create encoder and pass to rwc
+
+			msgCh := make(chan ICQMessageEvent, 1)
+			rwc = NewRWCClient(ctx, bot, msgCh, nil, chatID)
+			bot.openConns[chatID] = rwc
+		}
+	}
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rsa"
 	"fmt"
 	"os"
@@ -81,11 +82,23 @@ func main() {
 
 	// TODO: also pass BotRoomID
 	icqClient := icq.NewICQClient(cfg.ICQ.ClientToken)
-	_ = icqClient
+
+	ctx := context.Background()
 
 	proxyConns := proxy.ConnsChan()
 	for conn := range proxyConns {
+		// TODO: send public key
+
+		msgCh, err := icqClient.MessageChan(ctx, cfg.ICQ.BotRoomID)
+		if err != nil {
+			// TODO
+			return
+		}
+
+		// TODO: pass encoder
+		rwc := icq.NewRWCClient(ctx, icqClient, msgCh, nil, cfg.ICQ.BotRoomID)
+		// TODO proxy between conn and rwc
+		_ = rwc
 		_ = conn
-		// TODO
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/pymq/demhack4/config"
 	"github.com/pymq/demhack4/encoding"
+	"github.com/pymq/demhack4/icq"
 	"github.com/pymq/demhack4/socksproxy"
 	log "github.com/sirupsen/logrus"
 )
@@ -61,4 +62,16 @@ func main() {
 	}()
 
 	// TODO icq bot
+	icqBot, err := icq.NewICQBot(cfg.ICQBotToken)
+	if err != nil {
+		log.Fatalf("error initializing icq bot: %v", err)
+	}
+	defer func() {
+		err := icqBot.Close()
+		if err != nil {
+			log.Warnf("close icq bot: %v", err)
+		}
+	}()
+
+	_ = icqBot.Bot
 }

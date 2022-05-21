@@ -1,14 +1,13 @@
 package icq
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
 	"net/url"
 	"time"
-
-	"golang.org/x/net/context"
 )
 
 type ICQClient struct {
@@ -44,7 +43,7 @@ func NewICQClient(token string) *ICQClient {
 	}
 }
 
-func (icqInst *ICQClient) SendMessage(ctx context.Context, msg []byte, chatId string) (bool, error) {
+func (icqInst *ICQClient) SendMessage(ctx context.Context, msg []byte, chatId string) error {
 	const requestUrl = "wim/im/sendIM"
 	headers := map[string]string{
 		"content-type": "application/x-www-form-urlencoded",
@@ -60,10 +59,10 @@ func (icqInst *ICQClient) SendMessage(ctx context.Context, msg []byte, chatId st
 
 	req, err := DoPostRequest(ctx, fmt.Sprint(BaseUrl, requestUrl), []byte(data.Encode()), headers, sharedHeaders)
 	if err != nil {
-		return false, fmt.Errorf("send message error: %s", err)
+		return fmt.Errorf("send message error: %s", err)
 	}
 
-	return true, req.Body.Close()
+	return req.Body.Close()
 }
 
 type ICQMessageEvent struct {
@@ -91,7 +90,7 @@ func (icqInst *ICQClient) MessageChan(ctx context.Context, chatId string) (chan 
 
 	bUrl.RawQuery = decoded
 	initFetchUrl := bUrl.String()
-	msgCh := make(chan ICQMessageEvent)
+	msgCh := make(chan ICQMessageEvent, 1)
 
 	go func() {
 		const maxRetry = 3
