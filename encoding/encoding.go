@@ -6,7 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/ascii85"
+	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -76,11 +76,11 @@ func (e *Encoder) PackMessage(flags uint64, message []byte) ([]byte, error) {
 	}
 	buf.Write(ciphertext)
 
-	return EncodeAscii85(buf.Bytes()), nil
+	return EncodeBase64(buf.Bytes()), nil
 }
 
 func (e *Encoder) UnpackMessage(encodedBody []byte) ([]byte, uint64, error) {
-	decoded, err := DecodeAscii85(encodedBody)
+	decoded, err := DecodeBase64(encodedBody)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -119,8 +119,8 @@ func MarshalKey(private *rsa.PrivateKey) (privateBytes, publicBytes []byte, err 
 	return priBytes, pubBytes, nil
 }
 
-func UnmarshalPrivateKeyWithAscii85(key []byte) (*rsa.PrivateKey, error) {
-	decoded, err := DecodeAscii85(key)
+func UnmarshalPrivateKeyWithBase64(key []byte) (*rsa.PrivateKey, error) {
+	decoded, err := DecodeBase64(key)
 	if err != nil {
 		return nil, err
 	}
@@ -136,20 +136,17 @@ func UnmarshalPrivateKeyWithAscii85(key []byte) (*rsa.PrivateKey, error) {
 	return p, nil
 }
 
-func EncodeAscii85(data []byte) []byte {
-	encodedBuf := make([]byte, ascii85.MaxEncodedLen(len(data)))
-	n := ascii85.Encode(encodedBuf, data)
-	return encodedBuf[0:n]
+func EncodeBase64(data []byte) []byte {
+	encodedBuf := make([]byte, base64.RawURLEncoding.EncodedLen(len(data)))
+	base64.RawURLEncoding.Encode(encodedBuf, data)
+	return encodedBuf
 }
 
-func DecodeAscii85(encoded []byte) ([]byte, error) {
-	decoded := make([]byte, 4*len(encoded))
-	ndst, nsrc, err := ascii85.Decode(decoded, encoded, true)
+func DecodeBase64(encoded []byte) ([]byte, error) {
+	decoded := make([]byte, base64.RawURLEncoding.DecodedLen(len(encoded)))
+	ndst, err := base64.RawURLEncoding.Decode(decoded, encoded)
 	if err != nil {
-		return nil, fmt.Errorf("ascii85.Decode: %v", err)
-	} else if len(encoded) != nsrc {
-		// should not happen in practice
-		return nil, fmt.Errorf("ascii85.Decode: mismatch between encoded len %d and decoded len %d", len(encoded), nsrc)
+		return nil, fmt.Errorf("base64.Decode: %v", err)
 	}
 	return decoded[:ndst], nil
 }

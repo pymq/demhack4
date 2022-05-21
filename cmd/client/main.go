@@ -36,7 +36,7 @@ func main() {
 			log.Fatalf("error generating rsa key: %v", err)
 		}
 	} else {
-		privateKey, err = encoding.UnmarshalPrivateKeyWithAscii85([]byte(cfg.RSAPrivateKey))
+		privateKey, err = encoding.UnmarshalPrivateKeyWithBase64([]byte(cfg.RSAPrivateKey))
 		if err != nil {
 			log.Fatalf("error unmarshaling rsa key from config: %v", err)
 		}
@@ -46,15 +46,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("error marshal rsa key: %v", err)
 	}
-	cfg.RSAPrivateKey = string(encoding.EncodeAscii85(privBytes))
-	fmt.Printf("My public key:\n%s\n", encoding.EncodeAscii85(pubBytes))
+	cfg.RSAPrivateKey = string(encoding.EncodeBase64(privBytes))
+	fmt.Printf("My public key:\n%s\n", encoding.EncodeBase64(pubBytes))
 	// saving new values from defaults, generated private key
 	err = config.SaveConfig(cfg)
 	if err != nil {
 		log.Fatalf("error saving config: %v", err)
 	}
 
-	peerPubKey, err := encoding.DecodeAscii85([]byte(cfg.RSAServerPublicKey))
+	peerPubKey, err := encoding.DecodeBase64([]byte(cfg.RSAServerPublicKey))
 	if err != nil {
 		log.Fatalf("error decoding server public rsa key: %v", err)
 	}
