@@ -62,22 +62,13 @@ func (icq *RWC) Read(p []byte) (n int, err error) {
 		return 0, nil
 	}
 
-	relocateSliceBytes := func(from, to []byte, counter int) {
-		for i := 0; i < len(to) && len(from) > 0; i++ {
-			to[i] = from[0]
-			from = from[1:]
-			counter++
-		}
-	}
-
-	readBytesCounter := 0
-
 	if len(icq.unreadBytes) > 0 {
-		relocateSliceBytes(icq.unreadBytes, p, readBytesCounter)
-		return readBytesCounter, nil
+		n := copy(p, icq.unreadBytes)
+		icq.unreadBytes = icq.unreadBytes[n:]
+		return n, nil
 	}
 
-	result, ok := <-icq.messageChan
+	result, closed := <-icq.messageChan
 	if result.Err != nil {
 		return 0, err
 	}
@@ -87,11 +78,11 @@ func (icq *RWC) Read(p []byte) (n int, err error) {
 		return 0, errors.New("read error: can't decode message")
 	}
 
-	relocateSliceBytes(result.Text, p, readBytesCounter)
+	readBytesCounter := copy(p, result.Text)
 
-	icq.unreadBytes = append(icq.unreadBytes, result.Text...)
+	icq.unreadBytes = result.Text[readBytesCounter:]
 
-	if len(icq.unreadBytes) == 0 && !ok {
+	if len(icq.unreadBytes) == 0 && !closed {
 		return readBytesCounter, io.EOF
 	}
 

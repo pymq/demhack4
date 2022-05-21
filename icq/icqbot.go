@@ -42,7 +42,7 @@ func NewICQBot(botToken string, encoder *encoding.Encoder, proxy *socksproxy.Ser
 func (bot *ICQBot) SendMessage(_ context.Context, msg []byte, chatId string) error {
 	icqMsg := bot.Bot.NewTextMessage(chatId, string(msg))
 	err := icqMsg.Send()
-	if icqMsg != nil {
+	if err != nil {
 		return fmt.Errorf("bot send message error: %s", err)
 	}
 	return nil
