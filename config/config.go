@@ -6,7 +6,10 @@ import (
 	"io/ioutil"
 )
 
-const Filename = "config.json"
+const (
+	ClientFilename = "config.json"
+	ServerFilename = "config_server.json"
+)
 
 type Server struct {
 	ICQBotToken   string
@@ -30,12 +33,12 @@ func SetClientDefaults(cfg *Client) {
 	}
 }
 
-func SaveConfig(cfg any) error {
+func SaveConfig(cfg any, path string) error {
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal config: %v", err)
 	}
-	err = ioutil.WriteFile(Filename, data, 0600)
+	err = ioutil.WriteFile(path, data, 0600)
 	if err != nil {
 		return fmt.Errorf("save config: %v", err)
 	}
