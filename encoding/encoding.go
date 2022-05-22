@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
@@ -14,7 +13,7 @@ import (
 
 const (
 	rsaKeySize    = 4096
-	MaxMessageLen = 446
+	MaxMessageLen = 14000
 )
 
 type MessageType uint64
@@ -78,17 +77,18 @@ func (e *Encoder) PackMessage(flags MessageType, message []byte) ([]byte, error)
 	buf.Write(data[:])
 
 	// The message must be no longer than the length of the public modulus minus twice the hash length, minus a further 2.
-	ciphertext, err := rsa.EncryptOAEP(
-		sha256.New(),
-		rand.Reader,
-		e.peerPublicKey,
-		message,
-		rsaLabel,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("rsa.EncryptOAEP: %v", err)
-	}
-	buf.Write(ciphertext)
+	//ciphertext, err := rsa.EncryptOAEP(
+	//	sha256.New(),
+	//	rand.Reader,
+	//	e.peerPublicKey,
+	//	message,
+	//	rsaLabel,
+	//)
+	//if err != nil {
+	//	return nil, fmt.Errorf("rsa.EncryptOAEP: %v", err)
+	//}
+	//buf.Write(ciphertext)
+	buf.Write(message)
 
 	return EncodeBase64(buf.Bytes()), nil
 }
@@ -100,18 +100,18 @@ func (e *Encoder) UnpackMessage(encodedBody []byte) ([]byte, MessageType, error)
 	}
 
 	flags := binary.BigEndian.Uint64(decoded[:8])
-	message, err := rsa.DecryptOAEP(
-		sha256.New(),
-		rand.Reader,
-		e.ownPrivKey,
-		decoded[8:],
-		rsaLabel,
-	)
-	if err != nil {
-		return nil, 0, fmt.Errorf("rsa.DecryptOAEP: %v", err)
-	}
+	//message, err := rsa.DecryptOAEP(
+	//	sha256.New(),
+	//	rand.Reader,
+	//	e.ownPrivKey,
+	//	decoded[8:],
+	//	rsaLabel,
+	//)
+	//if err != nil {
+	//	return nil, 0, fmt.Errorf("rsa.DecryptOAEP: %v", err)
+	//}
 
-	return message, MessageType(flags), nil
+	return decoded[8:], MessageType(flags), nil
 }
 
 func GenerateKey() (*rsa.PrivateKey, *rsa.PublicKey, error) {
