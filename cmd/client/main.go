@@ -112,7 +112,9 @@ func main() {
 		log.Fatalf("send public key error: %v", err)
 	}
 
-	yamuxSession, err := yamux.Client(socksproxy.ConnWrapper{ReadWriteCloser: rwc}, nil, nil)
+	yamuxCfg := yamux.DefaultConfig()
+	yamuxCfg.EnableKeepAlive = false
+	yamuxSession, err := yamux.Client(socksproxy.ConnWrapper{ReadWriteCloser: rwc}, yamuxCfg, nil)
 	if err != nil {
 		log.Fatalf("icq: can't start fething messages: %v", err)
 		return
