@@ -106,7 +106,9 @@ func (bot *ICQBot) processEvents(ctx context.Context) {
 			msgCh := make(chan ICQMessageEvent, 1)
 			rwc = NewRWCClient(ctx, bot, msgCh, &ICQEncoder{Encoder: *encoder}, encoding.MaxMessageLen, chatID)
 
-			yamuxServer, err := yamux.Server(socksproxy.ConnWrapper{ReadWriteCloser: rwc}, nil, nil)
+			yamuxCfg := yamux.DefaultConfig()
+			yamuxCfg.EnableKeepAlive = false
+			yamuxServer, err := yamux.Server(socksproxy.ConnWrapper{ReadWriteCloser: rwc}, yamuxCfg, nil)
 			if err != nil {
 				log.Errorf("icq: server: create yamux server: %v", err)
 				continue

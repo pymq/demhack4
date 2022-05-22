@@ -153,7 +153,7 @@ func (icqInst *ICQClient) MessageChan(ctx context.Context, chatId string) (chan 
 				switch event.Type {
 				case "histDlgState":
 					for _, msg := range event.EventData.Messages {
-						if msg.Outgoing {
+						if msg.Outgoing || len(msg.Text) == 0 {
 							continue
 						}
 						msgCh <- ICQMessageEvent{
