@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rsa"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -83,14 +85,23 @@ func main() {
 
 	icqClient := icq.NewICQClient(cfg.ICQ.ClientToken)
 
+	// TODO: graceful shutdown
 	ctx, _ := context.WithCancel(context.Background())
 
 	proxyConns := proxy.ConnsChan()
 	for conn := range proxyConns {
-		encKey, err := encoder.PackMessage(encoding.PublicKey, encoder.GetOwnPublicKey())
-		if err != nil {
-			panic(err)
-		}
+		// TODO: encrypt public key
+		//encKey, err := encoder.PackMessage(encoding.PublicKey, encoder.GetOwnPublicKey())
+		//if err != nil {
+		//	panic(err)
+		//}
+		buf := bytes.Buffer{}
+		var data [8]byte
+		binary.BigEndian.PutUint64(data[:], uint64(encoding.PublicKey))
+		buf.Write(data[:])
+		buf.Write(encoder.GetOwnPublicKey())
+		encKey := encoding.EncodeBase64(buf.Bytes())
+
 		err = icqClient.SendMessage(ctx, encKey, cfg.ICQ.BotRoomID)
 		if err != nil {
 			_ = conn.Close()
@@ -100,11 +111,12 @@ func main() {
 
 		msgCh, err := icqClient.MessageChan(ctx, cfg.ICQ.BotRoomID)
 		if err != nil {
-			log.Warnf("can't start fethcing: %v", err)
+			_ = conn.Close()
+			log.Warnf("can't start fething: %v", err)
 			continue
 		}
 
-		rwc := icq.NewRWCClient(ctx, icqClient, msgCh, &icq.ICQEncoder{Encoder: *encoder}, cfg.ICQ.BotRoomID)
+		rwc := icq.NewRWCClient(ctx, icqClient, msgCh, &icq.ICQEncoder{Encoder: *encoder}, encoding.MaxMessageLen, cfg.ICQ.BotRoomID)
 		bidirectionalCopy(rwc, conn)
 	}
 }
@@ -124,9 +136,9 @@ func bidirectionalCopy(first io.ReadWriteCloser, second io.ReadWriteCloser) {
 	for i := 0; i < 2; i++ {
 		err := <-errCh
 		if err != nil {
-			_ = first.Close()
-			_ = second.Close()
 			log.Warnf("proxy rwc conn error: %v", err)
 		}
 	}
+	_ = first.Close()
+	_ = second.Close()
 }

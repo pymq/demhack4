@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	rsaKeySize       = 2048
-	rsaSignatureSize = 256
+	rsaKeySize    = 4096
+	MaxMessageLen = 446
 )
 
 type MessageType uint64
@@ -77,7 +77,6 @@ func (e *Encoder) PackMessage(flags MessageType, message []byte) ([]byte, error)
 	binary.BigEndian.PutUint64(data[:], uint64(flags))
 	buf.Write(data[:])
 
-	// TODO: check this fact
 	// The message must be no longer than the length of the public modulus minus twice the hash length, minus a further 2.
 	ciphertext, err := rsa.EncryptOAEP(
 		sha256.New(),

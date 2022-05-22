@@ -2,6 +2,7 @@ package icq
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 
 	botgolang "github.com/mail-ru-im/bot-golang"
@@ -75,11 +76,20 @@ func (bot *ICQBot) processEvents(ctx context.Context) {
 				continue
 			}
 
-			publicKey, flags, err := bot.encoder.UnpackMessage([]byte(message))
+			// TODO: decrypt public key
+			//publicKey, flags, err := bot.encoder.UnpackMessage([]byte(message))
+			//if err != nil {
+			//	log.Errorf("icq: server: unpack encoded message: %v", err)
+			//	continue
+			//}
+			decoded, err := encoding.DecodeBase64([]byte(message))
 			if err != nil {
 				log.Errorf("icq: server: unpack encoded message: %v", err)
 				continue
 			}
+			flags := encoding.MessageType(binary.BigEndian.Uint64(decoded[:8]))
+			publicKey := decoded[8:]
+
 			if flags != encoding.PublicKey {
 				log.Errorf("icq: server: invalid first message type from peer: '%d', should be '%d'", flags, encoding.PublicKey)
 				continue
@@ -93,7 +103,7 @@ func (bot *ICQBot) processEvents(ctx context.Context) {
 			}
 
 			msgCh := make(chan ICQMessageEvent, 1)
-			rwc = NewRWCClient(ctx, bot, msgCh, &ICQEncoder{Encoder: *encoder}, chatID)
+			rwc = NewRWCClient(ctx, bot, msgCh, &ICQEncoder{Encoder: *encoder}, encoding.MaxMessageLen, chatID)
 			bot.openConns[chatID] = rwc
 
 			bot.proxy.ServeConn(rwc)

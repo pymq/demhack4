@@ -11,7 +11,7 @@ import (
 )
 
 // How to test
-// curl --socks5 localhost:8000 http://ifcfg.co
+// curl --socks5 localhost:9090 http://ifcfg.co
 
 func TestProxy(t *testing.T) {
 	const listenAddr = "localhost:8673"

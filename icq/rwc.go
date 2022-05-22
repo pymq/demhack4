@@ -18,22 +18,24 @@ type Encoding interface {
 type RWC struct {
 	Client
 	Encoding
-	messageChan chan ICQMessageEvent
-	unreadBytes []byte
-	ctx         context.Context
-	ctxCancel   context.CancelFunc
-	chatId      string
+	messageChan  chan ICQMessageEvent
+	unreadBytes  []byte
+	ctx          context.Context
+	ctxCancel    context.CancelFunc
+	chatId       string
+	messageLimit int
 }
 
-func NewRWCClient(ctx context.Context, cli Client, messageChan chan ICQMessageEvent, enc Encoding, chatId string) *RWC {
+func NewRWCClient(ctx context.Context, cli Client, messageChan chan ICQMessageEvent, enc Encoding, messageLimit int, chatId string) *RWC {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RWC{
-		Client:      cli,
-		Encoding:    enc,
-		messageChan: messageChan,
-		ctx:         ctx,
-		ctxCancel:   cancel,
-		chatId:      chatId,
+		Client:       cli,
+		Encoding:     enc,
+		messageChan:  messageChan,
+		ctx:          ctx,
+		ctxCancel:    cancel,
+		chatId:       chatId,
+		messageLimit: messageLimit,
 	}
 }
 
@@ -42,16 +44,26 @@ func (icq *RWC) Write(p []byte) (n int, err error) {
 		return 0, errors.New("write error: connection closed")
 	}
 
-	msg, err := icq.Encode(p)
-	if err != nil {
-		return 0, errors.New("write error: can't encode message")
+	for len(p) != 0 {
+		chunk := p
+		if len(p) > icq.messageLimit {
+			chunk = p[:icq.messageLimit]
+		}
+
+		msg, err := icq.Encode(chunk)
+		if err != nil {
+			return n, errors.New("write error: can't encode message")
+		}
+		err = icq.SendMessage(icq.ctx, msg, icq.chatId)
+		if err != nil {
+			return n, err
+		}
+
+		n += len(chunk)
+		p = p[len(chunk):]
 	}
 
-	err = icq.SendMessage(icq.ctx, msg, icq.chatId)
-	if err != nil {
-		return 0, err
-	}
-	return len(p), nil // TODO handle big messages
+	return n, nil
 }
 
 func (icq *RWC) Read(p []byte) (n int, err error) {
