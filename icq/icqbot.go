@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/libp2p/go-yamux/v3"
 	botgolang "github.com/mail-ru-im/bot-golang"
 	"github.com/pymq/demhack4/encoding"
 	"github.com/pymq/demhack4/socksproxy"
@@ -104,9 +105,28 @@ func (bot *ICQBot) processEvents(ctx context.Context) {
 
 			msgCh := make(chan ICQMessageEvent, 1)
 			rwc = NewRWCClient(ctx, bot, msgCh, &ICQEncoder{Encoder: *encoder}, encoding.MaxMessageLen, chatID)
+
+			yamuxServer, err := yamux.Server(socksproxy.ConnWrapper{ReadWriteCloser: rwc}, nil, nil)
+			if err != nil {
+				log.Errorf("icq: server: create yamux server: %v", err)
+				continue
+			}
 			bot.openConns[chatID] = rwc
 
-			bot.proxy.ServeConn(rwc)
+			go func() {
+				for {
+					if ctx.Err() != nil {
+						return
+					}
+					session, err := yamuxServer.Accept()
+					if err != nil {
+						log.Errorf("icq: server: accept yamux session: %v", err)
+						return
+					}
+
+					bot.proxy.ServeConn(session)
+				}
+			}()
 		}
 	}
 }

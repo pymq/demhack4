@@ -8,7 +8,6 @@ import (
 
 	"github.com/haxii/socks5"
 	log "github.com/sirupsen/logrus"
-	"golang.org/x/net/netutil"
 )
 
 type Server struct {
@@ -75,9 +74,6 @@ func NewClient(listenAddr string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// TODO: rewrite with go-yamux and remove this limit
-	listener = netutil.LimitListener(listener, 1)
 
 	cli := Client{
 		listener: listener,

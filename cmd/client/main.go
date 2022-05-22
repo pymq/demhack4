@@ -12,6 +12,7 @@ import (
 	"github.com/knadh/koanf"
 	"github.com/knadh/koanf/parsers/json"
 	"github.com/knadh/koanf/providers/file"
+	"github.com/libp2p/go-yamux/v3"
 	"github.com/pymq/demhack4/config"
 	"github.com/pymq/demhack4/encoding"
 	"github.com/pymq/demhack4/icq"
@@ -88,36 +89,45 @@ func main() {
 	// TODO: graceful shutdown
 	ctx, _ := context.WithCancel(context.Background())
 
+	msgCh, err := icqClient.MessageChan(ctx, cfg.ICQ.BotRoomID)
+	if err != nil {
+		log.Fatalf("icq: can't start fething messages: %v", err)
+	}
+	rwc := icq.NewRWCClient(ctx, icqClient, msgCh, &icq.ICQEncoder{Encoder: *encoder}, encoding.MaxMessageLen, cfg.ICQ.BotRoomID)
+
+	// TODO: encrypt public key
+	//encKey, err := encoder.PackMessage(encoding.PublicKey, encoder.GetOwnPublicKey())
+	//if err != nil {
+	//	panic(err)
+	//}
+	buf := bytes.Buffer{}
+	var data [8]byte
+	binary.BigEndian.PutUint64(data[:], uint64(encoding.PublicKey))
+	buf.Write(data[:])
+	buf.Write(encoder.GetOwnPublicKey())
+	encKey := encoding.EncodeBase64(buf.Bytes())
+
+	err = icqClient.SendMessage(ctx, encKey, cfg.ICQ.BotRoomID)
+	if err != nil {
+		log.Fatalf("send public key error: %v", err)
+	}
+
+	yamuxSession, err := yamux.Client(socksproxy.ConnWrapper{ReadWriteCloser: rwc}, nil, nil)
+	if err != nil {
+		log.Fatalf("icq: can't start fething messages: %v", err)
+		return
+	}
+
 	proxyConns := proxy.ConnsChan()
 	for conn := range proxyConns {
-		// TODO: encrypt public key
-		//encKey, err := encoder.PackMessage(encoding.PublicKey, encoder.GetOwnPublicKey())
-		//if err != nil {
-		//	panic(err)
-		//}
-		buf := bytes.Buffer{}
-		var data [8]byte
-		binary.BigEndian.PutUint64(data[:], uint64(encoding.PublicKey))
-		buf.Write(data[:])
-		buf.Write(encoder.GetOwnPublicKey())
-		encKey := encoding.EncodeBase64(buf.Bytes())
-
-		err = icqClient.SendMessage(ctx, encKey, cfg.ICQ.BotRoomID)
+		stream, err := yamuxSession.Open(ctx)
 		if err != nil {
+			log.Warnf("open yamux session error: %v", err)
 			_ = conn.Close()
-			log.Warnf("send public key error: %v", err)
 			continue
 		}
 
-		msgCh, err := icqClient.MessageChan(ctx, cfg.ICQ.BotRoomID)
-		if err != nil {
-			_ = conn.Close()
-			log.Warnf("can't start fething: %v", err)
-			continue
-		}
-
-		rwc := icq.NewRWCClient(ctx, icqClient, msgCh, &icq.ICQEncoder{Encoder: *encoder}, encoding.MaxMessageLen, cfg.ICQ.BotRoomID)
-		bidirectionalCopy(rwc, conn)
+		go bidirectionalCopy(stream, conn)
 	}
 }
 
