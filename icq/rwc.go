@@ -80,9 +80,11 @@ func (icq *RWC) Read(p []byte) (n int, err error) {
 		return n, nil
 	}
 
-	result, closed := <-icq.messageChan
+	result, open := <-icq.messageChan
 	if result.Err != nil {
-		return 0, err
+		return 0, result.Err
+	} else if !open && len(result.Text) == 0 {
+		return 0, io.EOF
 	}
 
 	result.Text, err = icq.Decode(result.Text)
@@ -94,7 +96,7 @@ func (icq *RWC) Read(p []byte) (n int, err error) {
 
 	icq.unreadBytes = result.Text[readBytesCounter:]
 
-	if len(icq.unreadBytes) == 0 && !closed {
+	if len(icq.unreadBytes) == 0 && !open {
 		return readBytesCounter, io.EOF
 	}
 
