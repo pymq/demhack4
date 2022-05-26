@@ -70,12 +70,12 @@ type ICQMessageEvent struct {
 	Err  error
 }
 
-func (icqInst *ICQClient) MessageChan(ctx context.Context, chatId string) (chan ICQMessageEvent, error) {
-	const requestUrl = "bos/bos-k035b/aim/fetchEvents" //TODO Filter byChatId
+func (icqInst *ICQClient) MessageChan(ctx context.Context, chatId string) chan ICQMessageEvent {
+	const requestUrl = "bos/bos-k035b/aim/fetchEvents"
 
 	bUrl, err := url.Parse(fmt.Sprint(BaseUrl, requestUrl))
 	if err != nil {
-		return nil, fmt.Errorf("prepare message chan error: %s", err)
+		panic(fmt.Errorf("parse url: %v", err))
 	}
 
 	urlValues := bUrl.Query()
@@ -85,7 +85,7 @@ func (icqInst *ICQClient) MessageChan(ctx context.Context, chatId string) (chan 
 	urlValues.Set("rnd", icqInst.genRequestId(fetch))
 	decoded, err := url.QueryUnescape(urlValues.Encode()) // TODO криво :/
 	if err != nil {
-		return nil, fmt.Errorf("prepare message chan error: %s", err)
+		panic(fmt.Errorf("unescape url: %v", err))
 	}
 
 	bUrl.RawQuery = decoded
@@ -166,7 +166,7 @@ func (icqInst *ICQClient) MessageChan(ctx context.Context, chatId string) (chan 
 		}
 	}()
 
-	return msgCh, nil
+	return msgCh
 }
 
 type React int8

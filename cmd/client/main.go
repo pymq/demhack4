@@ -89,10 +89,7 @@ func main() {
 	// TODO: graceful shutdown
 	ctx, _ := context.WithCancel(context.Background())
 
-	msgCh, err := icqClient.MessageChan(ctx, cfg.ICQ.BotRoomID)
-	if err != nil {
-		log.Fatalf("icq: can't start fething messages: %v", err)
-	}
+	msgCh := icqClient.MessageChan(ctx, cfg.ICQ.BotRoomID)
 	rwc := icq.NewRWCClient(ctx, icqClient, msgCh, &icq.ICQEncoder{Encoder: *encoder}, encoding.MaxMessageLen, cfg.ICQ.BotRoomID)
 
 	// TODO: encrypt public key
