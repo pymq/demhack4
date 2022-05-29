@@ -76,26 +76,15 @@ func (bot *ICQBot) processEvents(ctx context.Context) {
 				continue
 			}
 
-			publicKey, flags, err := bot.encoder.UnpackMessage([]byte(message))
-			if err != nil {
-				log.Errorf("icq: server: unpack encoded message: %v", err)
-				continue
-			}
-
-			if flags != encoding.PublicKey {
-				log.Errorf("icq: server: invalid first message type from peer: '%d', should be '%d'", flags, encoding.PublicKey)
-				continue
-			}
-
 			encoder := bot.encoder.Copy()
-			err = encoder.SetPeerPublicKey(publicKey)
-			if err != nil {
-				log.Errorf("icq: server: set peer public key: %v", err)
-				continue
-			}
-
-			msgCh := make(chan ICQMessageEvent, 1)
+			// buffer cap: one for public key message and one for message with data
+			msgCh := make(chan ICQMessageEvent, 2)
 			rwc = NewRWCClient(ctx, bot, msgCh, &ICQEncoder{Encoder: *encoder}, encoding.MaxMessageLen, chatID)
+
+			msgCh <- ICQMessageEvent{
+				Text: []byte(message),
+			}
+			// TODO: read from rwc once to trigger handling public key?
 
 			yamuxCfg := yamux.DefaultConfig()
 			yamuxCfg.EnableKeepAlive = false

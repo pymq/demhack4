@@ -3,7 +3,10 @@ package icq
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+
+	"github.com/pymq/demhack4/encoding"
 )
 
 type Client interface {
@@ -12,12 +15,13 @@ type Client interface {
 
 type Encoding interface {
 	Encode(message []byte) ([]byte, error)
-	Decode(message []byte) ([]byte, error)
+	Decode(message []byte) ([]byte, encoding.MessageType, error)
+	SetPeerPublicKey(publicKey []byte) error
 }
 
 type RWC struct {
-	Client
-	Encoding
+	cli          Client
+	encoding     Encoding
 	messageChan  chan ICQMessageEvent
 	unreadBytes  []byte
 	ctx          context.Context
@@ -29,8 +33,8 @@ type RWC struct {
 func NewRWCClient(ctx context.Context, cli Client, messageChan chan ICQMessageEvent, enc Encoding, messageLimit int, chatId string) *RWC {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RWC{
-		Client:       cli,
-		Encoding:     enc,
+		cli:          cli,
+		encoding:     enc,
 		messageChan:  messageChan,
 		ctx:          ctx,
 		ctxCancel:    cancel,
@@ -50,11 +54,11 @@ func (icq *RWC) Write(p []byte) (n int, err error) {
 			chunk = p[:icq.messageLimit]
 		}
 
-		msg, err := icq.Encode(chunk)
+		msg, err := icq.encoding.Encode(chunk)
 		if err != nil {
-			return n, errors.New("write error: can't encode message")
+			return 0, fmt.Errorf("read: can't encode message: %v", err)
 		}
-		err = icq.SendMessage(icq.ctx, msg, icq.chatId)
+		err = icq.cli.SendMessage(icq.ctx, msg, icq.chatId)
 		if err != nil {
 			return n, err
 		}
@@ -87,9 +91,17 @@ func (icq *RWC) Read(p []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 
-	result.Text, err = icq.Decode(result.Text)
+	var msgType encoding.MessageType
+	result.Text, msgType, err = icq.encoding.Decode(result.Text)
 	if err != nil {
-		return 0, errors.New("read error: can't decode message")
+		return 0, fmt.Errorf("read: can't decode message: %v", err)
+	}
+	if msgType == encoding.PublicKey {
+		err = icq.encoding.SetPeerPublicKey(result.Text)
+		if err != nil {
+			return 0, fmt.Errorf("read: set public key: %v", err)
+		}
+		return 0, nil
 	}
 
 	readBytesCounter := copy(p, result.Text)

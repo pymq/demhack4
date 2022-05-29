@@ -14,7 +14,6 @@ func (e *ICQEncoder) Encode(message []byte) ([]byte, error) {
 	return e.PackMessage(encoding.Text, message)
 }
 
-func (e *ICQEncoder) Decode(message []byte) ([]byte, error) {
-	rMsg, _, err := e.UnpackMessage(message)
-	return rMsg, err
+func (e *ICQEncoder) Decode(message []byte) ([]byte, encoding.MessageType, error) {
+	return e.UnpackMessage(message)
 }
