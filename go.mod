@@ -3,6 +3,7 @@ module github.com/pymq/demhack4
 go 1.18
 
 require (
+	filippo.io/age v1.0.0
 	github.com/haxii/socks5 v1.0.0
 	github.com/knadh/koanf v1.4.1
 	github.com/libp2p/go-yamux/v3 v3.1.1
@@ -22,6 +23,7 @@ require (
 	github.com/mitchellh/mapstructure v1.4.1 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5 // indirect
 	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )

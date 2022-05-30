@@ -1,12 +1,12 @@
 package main
 
 import (
-	"crypto/rsa"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"filippo.io/age"
 	"github.com/knadh/koanf"
 	"github.com/knadh/koanf/parsers/json"
 	"github.com/knadh/koanf/providers/file"
@@ -30,25 +30,21 @@ func main() {
 		log.Fatalf("error unmarshaling config: %v", err)
 	}
 
-	var privateKey *rsa.PrivateKey
-	if len(cfg.RSAPrivateKey) == 0 {
-		privateKey, _, err = encoding.GenerateKey()
+	var privateKey *age.X25519Identity
+	if len(cfg.PrivateKey) == 0 {
+		privateKey, err = encoding.GenerateKey()
 		if err != nil {
-			log.Fatalf("error generating rsa key: %v", err)
+			log.Fatalf("error generating private key: %v", err)
 		}
 	} else {
-		privateKey, err = encoding.UnmarshalPrivateKeyWithBase64([]byte(cfg.RSAPrivateKey))
+		privateKey, err = encoding.UnmarshalPrivateKey(cfg.PrivateKey)
 		if err != nil {
-			log.Fatalf("error unmarshaling rsa key from config: %v", err)
+			log.Fatalf("error unmarshaling private key from config: %v", err)
 		}
 	}
 
-	privBytes, pubBytes, err := encoding.MarshalKey(privateKey)
-	if err != nil {
-		log.Fatalf("error marshal rsa key: %v", err)
-	}
-	cfg.RSAPrivateKey = string(encoding.EncodeBase64(privBytes))
-	fmt.Printf("My public key:\n%s\n", encoding.EncodeBase64(pubBytes))
+	cfg.PrivateKey = privateKey.String()
+	fmt.Printf("My public key:\n%s\n", privateKey.Recipient().String())
 	// saving new values from defaults, generated private key
 	err = config.SaveConfig(cfg, config.ServerFilename)
 	if err != nil {
@@ -63,10 +59,7 @@ func main() {
 		}
 	}()
 
-	encoder, err := encoding.NewEncoder(privateKey)
-	if err != nil {
-		log.Fatalf("error setup encoder: %v", err)
-	}
+	encoder := encoding.NewEncoder(privateKey)
 
 	icqBot, err := icq.NewICQBot(cfg.ICQBotToken, encoder, proxy)
 	if err != nil {
