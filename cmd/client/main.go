@@ -3,12 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/rsa"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
 
+	"filippo.io/age"
 	"github.com/knadh/koanf"
 	"github.com/knadh/koanf/parsers/json"
 	"github.com/knadh/koanf/providers/file"
@@ -34,34 +34,30 @@ func main() {
 	}
 	config.SetClientDefaults(&cfg)
 
-	var privateKey *rsa.PrivateKey
-	if len(cfg.RSAPrivateKey) == 0 {
-		privateKey, _, err = encoding.GenerateKey()
+	var privateKey *age.X25519Identity
+	if len(cfg.PrivateKey) == 0 {
+		privateKey, err = encoding.GenerateKey()
 		if err != nil {
-			log.Fatalf("error generating rsa key: %v", err)
+			log.Fatalf("error generating private key: %v", err)
 		}
 	} else {
-		privateKey, err = encoding.UnmarshalPrivateKeyWithBase64([]byte(cfg.RSAPrivateKey))
+		privateKey, err = encoding.UnmarshalPrivateKey(cfg.PrivateKey)
 		if err != nil {
-			log.Fatalf("error unmarshaling rsa key from config: %v", err)
+			log.Fatalf("error unmarshaling private key from config: %v", err)
 		}
 	}
 
-	privBytes, pubBytes, err := encoding.MarshalKey(privateKey)
-	if err != nil {
-		log.Fatalf("error marshal rsa key: %v", err)
-	}
-	cfg.RSAPrivateKey = string(encoding.EncodeBase64(privBytes))
-	fmt.Printf("My public key:\n%s\n", encoding.EncodeBase64(pubBytes))
+	cfg.PrivateKey = privateKey.String()
+	fmt.Printf("My public key:\n%s\n", privateKey.Recipient().String())
 	// saving new values from defaults, generated private key
 	err = config.SaveConfig(cfg, config.ClientFilename)
 	if err != nil {
 		log.Fatalf("error saving config: %v", err)
 	}
 
-	peerPubKey, err := encoding.DecodeBase64([]byte(cfg.RSAServerPublicKey))
+	serverPubKey, err := encoding.UnmarshalPublicKey(cfg.ServerPublicKey)
 	if err != nil {
-		log.Fatalf("error decoding server public rsa key: %v", err)
+		log.Fatalf("error decoding server public key: %v", err)
 	}
 
 	proxy, err := socksproxy.NewClient(cfg.ProxyListenAddr)
@@ -75,11 +71,8 @@ func main() {
 		}
 	}()
 
-	encoder, err := encoding.NewEncoder(privateKey)
-	if err != nil {
-		log.Fatalf("error setup encoder: %v", err)
-	}
-	err = encoder.SetPeerPublicKey(peerPubKey)
+	encoder := encoding.NewEncoder(privateKey)
+	err = encoder.SetPeerPublicKey([]byte(serverPubKey.String()))
 	if err != nil {
 		log.Fatalf("error setting server public key: %v", err)
 	}

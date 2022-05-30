@@ -2,19 +2,16 @@ package encoding
 
 import (
 	"bytes"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
-	"errors"
 	"fmt"
+	"io"
+
+	"filippo.io/age"
 )
 
 const (
-	rsaKeySize    = 4096
-	MaxMessageLen = 446
+	MaxMessageLen = 10000
 )
 
 type MessageType uint64
@@ -24,32 +21,26 @@ const (
 	Text
 )
 
-var rsaLabel = []byte("")
-
 // Packet structure:
 // flags (8 bytes) - type, version
 // signature // TODO ?
 // ciphertext
 
 type Encoder struct {
-	ownPrivKey     *rsa.PrivateKey
+	ownPrivKey     *age.X25519Identity
 	publicKeyBytes []byte
-	peerPublicKey  *rsa.PublicKey
+	peerPublicKey  *age.X25519Recipient
 }
 
-func NewEncoder(privateKey *rsa.PrivateKey) (*Encoder, error) {
-	_, publicBytes, err := MarshalKey(privateKey)
-	if err != nil {
-		return nil, err
-	}
+func NewEncoder(privateKey *age.X25519Identity) *Encoder {
 	return &Encoder{
 		ownPrivKey:     privateKey,
-		publicKeyBytes: publicBytes,
-	}, nil
+		publicKeyBytes: []byte(privateKey.Recipient().String()),
+	}
 }
 
 func (e *Encoder) SetPeerPublicKey(publicKey []byte) error {
-	pub, err := x509.ParsePKCS1PublicKey(publicKey)
+	pub, err := age.ParseX25519Recipient(string(publicKey))
 	if err != nil {
 		return err
 	}
@@ -72,23 +63,21 @@ func (e *Encoder) Copy() *Encoder {
 
 func (e *Encoder) PackMessage(flags MessageType, message []byte) ([]byte, error) {
 	// TODO: reuse buffers with sync.Pool, optimize allocations
-	buf := bytes.Buffer{}
+	buf := &bytes.Buffer{}
 	var data [8]byte
 	binary.BigEndian.PutUint64(data[:], uint64(flags))
 	buf.Write(data[:])
 
-	// The message must be no longer than the length of the public modulus minus twice the hash length, minus a further 2.
-	ciphertext, err := rsa.EncryptOAEP(
-		sha256.New(),
-		rand.Reader,
-		e.peerPublicKey,
-		message,
-		rsaLabel,
-	)
+	w, err := age.Encrypt(buf, e.peerPublicKey)
 	if err != nil {
-		return nil, fmt.Errorf("rsa.EncryptOAEP: %v", err)
+		return nil, fmt.Errorf("failed to create encrypted stream: %v", err)
 	}
-	buf.Write(ciphertext)
+	if _, err := w.Write(message); err != nil {
+		return nil, fmt.Errorf("failed to write to encrypted stream: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		return nil, fmt.Errorf("failed to flush to encrypted stream: %v", err)
+	}
 
 	return EncodeBase64(buf.Bytes()), nil
 }
@@ -99,55 +88,32 @@ func (e *Encoder) UnpackMessage(encodedBody []byte) ([]byte, MessageType, error)
 		return nil, 0, err
 	}
 
+	if len(decoded) < 8 {
+		return nil, 0, fmt.Errorf("invalid decoded message length, should be > 8, got %d", len(decoded))
+	}
 	flags := binary.BigEndian.Uint64(decoded[:8])
-	message, err := rsa.DecryptOAEP(
-		sha256.New(),
-		rand.Reader,
-		e.ownPrivKey,
-		decoded[8:],
-		rsaLabel,
-	)
+	r, err := age.Decrypt(bytes.NewReader(decoded[8:]), e.ownPrivKey)
 	if err != nil {
-		return nil, 0, fmt.Errorf("rsa.DecryptOAEP: %v", err)
+		return nil, 0, fmt.Errorf("failed to open decrypted stream: %v", err)
+	}
+	out := &bytes.Buffer{}
+	if _, err := io.Copy(out, r); err != nil {
+		return nil, 0, fmt.Errorf("failed to read from decrypted stream: %v", err)
 	}
 
-	return message, MessageType(flags), nil
+	return out.Bytes(), MessageType(flags), nil
 }
 
-func GenerateKey() (*rsa.PrivateKey, *rsa.PublicKey, error) {
-	private, err := rsa.GenerateKey(rand.Reader, rsaKeySize)
-	if err != nil {
-		return nil, nil, err
-	}
-	return private, &private.PublicKey, nil
+func GenerateKey() (*age.X25519Identity, error) {
+	return age.GenerateX25519Identity()
 }
 
-func MarshalKey(private *rsa.PrivateKey) (privateBytes, publicBytes []byte, err error) {
-	public := &private.PublicKey
-	priBytes, err := x509.MarshalPKCS8PrivateKey(private)
-	if err != nil {
-		return nil, nil, err
-	}
-	pubBytes := x509.MarshalPKCS1PublicKey(public)
-
-	return priBytes, pubBytes, nil
+func UnmarshalPrivateKey(key string) (*age.X25519Identity, error) {
+	return age.ParseX25519Identity(key)
 }
 
-func UnmarshalPrivateKeyWithBase64(key []byte) (*rsa.PrivateKey, error) {
-	decoded, err := DecodeBase64(key)
-	if err != nil {
-		return nil, err
-	}
-
-	pri, err := x509.ParsePKCS8PrivateKey(decoded)
-	if err != nil {
-		return nil, err
-	}
-	p, ok := pri.(*rsa.PrivateKey)
-	if !ok {
-		return nil, errors.New("invalid private key")
-	}
-	return p, nil
+func UnmarshalPublicKey(key string) (*age.X25519Recipient, error) {
+	return age.ParseX25519Recipient(key)
 }
 
 func EncodeBase64(data []byte) []byte {

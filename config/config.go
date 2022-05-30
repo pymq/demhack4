@@ -12,18 +12,17 @@ const (
 )
 
 type Server struct {
-	ICQBotToken   string
-	RSAPrivateKey string
+	ICQBotToken string
+	PrivateKey  string
 }
 
 type Client struct {
-	ProxyListenAddr    string
-	RSAPrivateKey      string
-	RSAServerPublicKey string
-	ICQ                struct {
+	ProxyListenAddr string
+	PrivateKey      string
+	ServerPublicKey string
+	ICQ             struct {
 		ClientToken string
-		// TODO: or username?
-		BotRoomID string
+		BotRoomID   string
 	}
 }
 

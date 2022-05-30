@@ -1,6 +1,7 @@
 package encoding
 
 import (
+	"encoding/base64"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -40,22 +41,23 @@ func BenchmarkEncodingSize(b *testing.B) {
 			encodedMessage, err := encoder.PackMessage(Text, message)
 			assert.NoError(b, err)
 
-			b.ReportMetric(float64(len(message)), "original")
+			b.ReportMetric(0, "ns/op") // disable metric
 			b.ReportMetric(float64(len(encodedMessage)), "encoded")
+			b.ReportMetric(float64(base64.RawURLEncoding.EncodedLen(len(message))), "base64")
+			b.ReportMetric(float64(len(message)), "original")
+			b.ReportMetric(float64(len(encodedMessage))/float64(len(message)), "ratio")
 		})
 	}
 }
 
 func setupTwoEncoders(t testing.TB) (*Encoder, *Encoder) {
-	privOne, _, err := GenerateKey()
+	privOne, err := GenerateKey()
 	assert.NoError(t, err)
-	encOne, err := NewEncoder(privOne)
-	assert.NoError(t, err)
+	encOne := NewEncoder(privOne)
 
-	privTwo, _, err := GenerateKey()
+	privTwo, err := GenerateKey()
 	assert.NoError(t, err)
-	encTwo, err := NewEncoder(privTwo)
-	assert.NoError(t, err)
+	encTwo := NewEncoder(privTwo)
 
 	err = encOne.SetPeerPublicKey(encTwo.GetOwnPublicKey())
 	assert.NoError(t, err)
