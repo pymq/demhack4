@@ -2,7 +2,6 @@ package icq
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 
 	"github.com/libp2p/go-yamux/v3"
@@ -77,19 +76,11 @@ func (bot *ICQBot) processEvents(ctx context.Context) {
 				continue
 			}
 
-			// TODO: decrypt public key
-			//publicKey, flags, err := bot.encoder.UnpackMessage([]byte(message))
-			//if err != nil {
-			//	log.Errorf("icq: server: unpack encoded message: %v", err)
-			//	continue
-			//}
-			decoded, err := encoding.DecodeBase64([]byte(message))
+			publicKey, flags, err := bot.encoder.UnpackMessage([]byte(message))
 			if err != nil {
 				log.Errorf("icq: server: unpack encoded message: %v", err)
 				continue
 			}
-			flags := encoding.MessageType(binary.BigEndian.Uint64(decoded[:8]))
-			publicKey := decoded[8:]
 
 			if flags != encoding.PublicKey {
 				log.Errorf("icq: server: invalid first message type from peer: '%d', should be '%d'", flags, encoding.PublicKey)

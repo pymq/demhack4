@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -85,17 +83,10 @@ func main() {
 	msgCh := icqClient.MessageChan(ctx, cfg.ICQ.BotRoomID)
 	rwc := icq.NewRWCClient(ctx, icqClient, msgCh, &icq.ICQEncoder{Encoder: *encoder}, encoding.MaxMessageLen, cfg.ICQ.BotRoomID)
 
-	// TODO: encrypt public key
-	//encKey, err := encoder.PackMessage(encoding.PublicKey, encoder.GetOwnPublicKey())
-	//if err != nil {
-	//	panic(err)
-	//}
-	buf := bytes.Buffer{}
-	var data [8]byte
-	binary.BigEndian.PutUint64(data[:], uint64(encoding.PublicKey))
-	buf.Write(data[:])
-	buf.Write(encoder.GetOwnPublicKey())
-	encKey := encoding.EncodeBase64(buf.Bytes())
+	encKey, err := encoder.PackMessage(encoding.PublicKey, encoder.GetOwnPublicKey())
+	if err != nil {
+		panic(err)
+	}
 
 	err = icqClient.SendMessage(ctx, encKey, cfg.ICQ.BotRoomID)
 	if err != nil {
