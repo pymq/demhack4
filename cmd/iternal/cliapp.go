@@ -1,4 +1,4 @@
-package demhack4
+package iternal
 
 import (
 	"context"
@@ -94,7 +94,7 @@ func (app *CliApp) StartProxy(ctx context.Context) error {
 	yamuxCfg.EnableKeepAlive = false
 	yamuxSession, err := yamux.Client(socksproxy.ConnWrapper{ReadWriteCloser: rwc}, yamuxCfg, nil)
 	if err != nil {
-		return fmt.Errorf("icq: can't start fething messages: %v", err)
+		return fmt.Errorf("init yamux client connection error: %v", err)
 	}
 
 	proxy, err := socksproxy.NewClient(app.cfg.ProxyListenAddr)

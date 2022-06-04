@@ -9,7 +9,7 @@ import (
 	"syscall"
 
 	"github.com/getlantern/systray"
-	"github.com/pymq/demhack4"
+	"github.com/pymq/demhack4/cmd/iternal"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -20,7 +20,7 @@ var (
 	tempIconFilepath = filepath.Join(os.TempDir(), "icon.png") // TODO add appName prefix to image
 )
 
-var app *demhack4.CliApp
+var app *iternal.CliApp
 
 func main() {
 	systray.Run(onReady, onExit)
@@ -63,6 +63,6 @@ func initClientApp() (err error) {
 			err = fmt.Errorf("recovered panic from starting app: %v", recovered)
 		}
 	}()
-	app = demhack4.NewCliApp()
+	app = iternal.NewCliApp()
 	return nil
 }

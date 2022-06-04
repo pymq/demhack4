@@ -67,7 +67,7 @@ func initTray() {
 	}()
 
 	systray.AddSeparator()
-	mQuit := systray.AddMenuItem("Exit", "Exit")
+	mQuit := systray.AddMenuItem("Quit", "")
 	go func() {
 		for range mQuit.ClickedCh {
 			systray.Quit() // TODO add dialog?
