@@ -20,26 +20,28 @@ type Encoding interface {
 }
 
 type RWC struct {
-	cli          Client
-	encoding     Encoding
-	messageChan  chan ICQMessageEvent
-	unreadBytes  []byte
-	ctx          context.Context
-	ctxCancel    context.CancelFunc
-	chatId       string
-	messageLimit int
+	cli                    Client
+	encoding               Encoding
+	messageChan            chan ICQMessageEvent
+	unreadBytes            []byte
+	ctx                    context.Context
+	ctxCancel              context.CancelFunc
+	chatId                 string
+	messageLimit           int
+	onPubkeyMessageHandler func()
 }
 
-func NewRWCClient(ctx context.Context, cli Client, messageChan chan ICQMessageEvent, enc Encoding, messageLimit int, chatId string) *RWC {
+func NewRWCClient(ctx context.Context, cli Client, messageChan chan ICQMessageEvent, enc Encoding, messageLimit int, chatId string, onPubkeyMessageHandler func()) *RWC {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RWC{
-		cli:          cli,
-		encoding:     enc,
-		messageChan:  messageChan,
-		ctx:          ctx,
-		ctxCancel:    cancel,
-		chatId:       chatId,
-		messageLimit: messageLimit,
+		cli:                    cli,
+		encoding:               enc,
+		messageChan:            messageChan,
+		ctx:                    ctx,
+		ctxCancel:              cancel,
+		chatId:                 chatId,
+		messageLimit:           messageLimit,
+		onPubkeyMessageHandler: onPubkeyMessageHandler,
 	}
 }
 
@@ -101,6 +103,8 @@ func (icq *RWC) Read(p []byte) (n int, err error) {
 		if err != nil {
 			return 0, fmt.Errorf("read: set public key: %v", err)
 		}
+		// TODO: move `go` one layer higher
+		go icq.onPubkeyMessageHandler()
 		return 0, nil
 	}
 

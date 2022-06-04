@@ -58,57 +58,76 @@ func (bot *ICQBot) processEvents(ctx context.Context) {
 	updates := bot.Bot.GetUpdatesChannel(ctx)
 
 	for {
+		var update botgolang.Event
 		select {
 		case <-ctx.Done():
 			return
-		case update := <-updates:
-			if update.Type != botgolang.NEW_MESSAGE {
-				continue
-			}
-			chatID := update.Payload.Chat.ID
-			message := update.Payload.Message().Text
+		case update = <-updates:
+		}
 
-			rwc, exists := bot.openConns[chatID]
-			if exists {
-				rwc.messageChan <- ICQMessageEvent{
-					Text: []byte(message),
-				}
-				continue
-			}
+		if update.Type != botgolang.NEW_MESSAGE {
+			continue
+		}
+		chatID := update.Payload.Chat.ID
+		message := update.Payload.Message().Text
 
-			encoder := bot.encoder.Copy()
-			// buffer cap: one for public key message and one for message with data
-			msgCh := make(chan ICQMessageEvent, 2)
-			rwc = NewRWCClient(ctx, bot, msgCh, &ICQEncoder{Encoder: *encoder}, encoding.MaxMessageLen, chatID)
-
-			msgCh <- ICQMessageEvent{
+		rwc, exists := bot.openConns[chatID]
+		if exists {
+			rwc.messageChan <- ICQMessageEvent{
 				Text: []byte(message),
 			}
-			// TODO: read from rwc once to trigger handling public key?
+			continue
+		}
 
+		var yamuxServer *yamux.Session
+		onPubkeyCallback := func() {
+			if yamuxServer != nil {
+				// TODO: handle err?
+				// TODO: вот тут зависает, внутри на <-s.recvDoneCh, а он в свою очередь на rwc.Read()
+				_ = yamuxServer.Close()
+			}
 			yamuxCfg := yamux.DefaultConfig()
 			yamuxCfg.EnableKeepAlive = false
-			yamuxServer, err := yamux.Server(socksproxy.ConnWrapper{ReadWriteCloser: rwc}, yamuxCfg, nil)
+			var err error
+			yamuxServer, err = yamux.Server(socksproxy.ConnWrapper{ReadWriteCloser: rwc}, yamuxCfg, nil)
 			if err != nil {
 				log.Errorf("icq: server: create yamux server: %v", err)
-				continue
+				return
 			}
-			bot.openConns[chatID] = rwc
-
-			go func() {
-				for {
-					if ctx.Err() != nil {
-						return
-					}
-					session, err := yamuxServer.Accept()
-					if err != nil {
-						log.Errorf("icq: server: accept yamux session: %v", err)
-						return
-					}
-
-					bot.proxy.ServeConn(session)
+			// TODO: remove `go`, inline for loop
+			//go func() {
+			for {
+				if ctx.Err() != nil {
+					return
 				}
-			}()
+				session, err := yamuxServer.Accept()
+				if err != nil {
+					log.Errorf("icq: server: accept yamux session: %v", err)
+					return
+				}
+
+				bot.proxy.ServeConn(session)
+			}
+			//}()
+		}
+
+		encoder := bot.encoder.Copy()
+		// buffer cap: one for public key message and one for message with data
+		msgCh := make(chan ICQMessageEvent, 2)
+		rwc = NewRWCClient(ctx, bot, msgCh, &ICQEncoder{Encoder: *encoder}, encoding.MaxMessageLen, chatID, onPubkeyCallback)
+		bot.openConns[chatID] = rwc
+
+		msgCh <- ICQMessageEvent{
+			Text: []byte(message),
+		}
+		// trigger setting public key from message above
+		n, err := rwc.Read([]byte{0})
+		if err != nil {
+			log.Errorf("icq: server: read from rwc for the first time: %v", err)
+			continue
+		} else if n != 0 {
+			// TODO log error
+			panic(n)
 		}
 	}
 }

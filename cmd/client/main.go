@@ -81,7 +81,7 @@ func main() {
 	ctx, _ := context.WithCancel(context.Background())
 
 	msgCh := icqClient.MessageChan(ctx, cfg.ICQ.BotRoomID)
-	rwc := icq.NewRWCClient(ctx, icqClient, msgCh, &icq.ICQEncoder{Encoder: *encoder}, encoding.MaxMessageLen, cfg.ICQ.BotRoomID)
+	rwc := icq.NewRWCClient(ctx, icqClient, msgCh, &icq.ICQEncoder{Encoder: *encoder}, encoding.MaxMessageLen, cfg.ICQ.BotRoomID, nil)
 
 	encKey, err := encoder.PackMessage(encoding.PublicKey, encoder.GetOwnPublicKey())
 	if err != nil {

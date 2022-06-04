@@ -96,6 +96,7 @@ func (icqInst *ICQClient) MessageChan(ctx context.Context, chatId string) chan I
 		const maxRetry = 3
 		fetchUrl := initFetchUrl
 		retryCounter := 0
+		defer close(msgCh)
 
 		for {
 			select {
@@ -108,7 +109,6 @@ func (icqInst *ICQClient) MessageChan(ctx context.Context, chatId string) chan I
 					Text: nil,
 					Err:  errors.New("send fetch request error: retry count exceeded"),
 				}
-				close(msgCh)
 				return
 			}
 			res, err := DoGetRequest(ctx, fetchUrl, nil, sharedHeaders)
