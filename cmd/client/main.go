@@ -6,12 +6,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/pymq/demhack4/cmd/iternal"
+	"github.com/pymq/demhack4/cmd/internal/client"
 	log "github.com/sirupsen/logrus"
 )
 
 func main() {
-	app := iternal.NewCliApp()
+	app := client.NewCliApp()
 	err := app.StartProxy(context.Background())
 	if err != nil {
 		log.Panicf("start proxy error: %v", err)

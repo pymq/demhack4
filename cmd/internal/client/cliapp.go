@@ -1,4 +1,4 @@
-package iternal
+package client
 
 import (
 	"context"
