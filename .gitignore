@@ -1,0 +1,9 @@
+# config
+/cmd/server/config_server.json
+/config.json
+
+# IDE
+.idea
+
+# win builds
+*.exe
