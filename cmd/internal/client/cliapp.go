@@ -19,9 +19,10 @@ import (
 )
 
 type CliApp struct {
-	cfg       config.Client
-	encoder   *encoding.Encoder
-	ctxCancel context.CancelFunc
+	cfg           config.Client
+	encoder       *encoding.Encoder
+	ctxCancel     context.CancelFunc
+	ctxCancelDone chan struct{} // closed on done
 }
 
 func NewCliApp() *CliApp {
@@ -103,6 +104,7 @@ func (app *CliApp) StartProxy(ctx context.Context) error {
 	}
 
 	proxyConns := proxy.ConnsChan()
+	closeDone := make(chan struct{})
 	go func() {
 		for {
 			select {
@@ -115,6 +117,7 @@ func (app *CliApp) StartProxy(ctx context.Context) error {
 				if err != nil {
 					log.Warnf("close proxy error: %v", err)
 				}
+				close(closeDone)
 				return
 			case conn := <-proxyConns:
 				stream, err := yamuxSession.Open(ctx)
@@ -130,6 +133,9 @@ func (app *CliApp) StartProxy(ctx context.Context) error {
 			}
 		}
 	}()
+
+	app.ctxCancelDone = closeDone
+
 	return nil
 }
 
@@ -137,6 +143,10 @@ func (app *CliApp) StopProxy() {
 	if app.ctxCancel != nil {
 		app.ctxCancel()
 		app.ctxCancel = nil
+		if app.ctxCancelDone != nil {
+			<-app.ctxCancelDone
+		}
+		app.ctxCancelDone = nil
 	}
 }
 
